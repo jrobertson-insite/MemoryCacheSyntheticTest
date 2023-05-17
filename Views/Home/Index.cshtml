@@ -1,0 +1,10 @@
+﻿@model MemoryCacheModel
+
+@{
+    ViewBag.Title = "Home Page";
+}
+
+<div class="jumbotron">
+    <h1>Current Cache Memory: @(Model.MemoryInMegabytes.ToString("0.00")) megabytes</h1>
+    <h1>Current Cache Count: @Model.CacheCount</h1>
+</div>
