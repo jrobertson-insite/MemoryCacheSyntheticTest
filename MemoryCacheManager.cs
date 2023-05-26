@@ -11,6 +11,9 @@ using System.Text;
 using System.Threading;
 using System.Web.Hosting;
 using Bogus;
+using Datadog.Trace;
+using Datadog.Trace.Configuration;
+using Serilog;
 
 namespace MemoryCacheSyntheticTest;
 
@@ -61,16 +64,32 @@ public class MemoryCacheManager
 
     private static readonly ConcurrentDictionary<string, object> CacheKeyLockMap = new();
 
-    public static ObjectCache Cache => MemoryCache.Default;
+    private readonly DogStatsdClient DogStatsdClient;
+
+    private static ObjectCache Cache => MemoryCache.Default;
 
     public MemoryCacheManager()
     {
-        Console.WriteLine(MemoryCache.Default.CacheMemoryLimit);
+        // Create a settings object using the existing environment variables and config sources
+        var settings = TracerSettings.FromDefaultSources();
+
+        // Override a value
+        // settings.GlobalTags.Add("SomeKey", "SomeValue");
+
+        // Replace the tracer configuration
+        Tracer.Configure(settings);
+
+        Log.Information($"CacheMemoryLimit: {MemoryCache.Default.CacheMemoryLimit}", MemoryCache.Default.CacheMemoryLimit);
+
+        this.DogStatsdClient = new DogStatsdClient();
+        this.DogStatsdClient.Client.Gauge("memory_cache_synthetic_test.memory_cache.cacheMemoryLimitMegabytes.gauge", Convert.ToDouble(Environment.GetEnvironmentVariable("CACHEMEMORYLIMITMEGABYTES")), tags: new[] {"environment:dev"});
+        this.DogStatsdClient.Client.Gauge("memory_cache_synthetic_test.memory_cache.physicalMemoryLimitPercentage.gauge", Convert.ToDouble(Environment.GetEnvironmentVariable("PHYSICALMEMORYLIMITPERCENTAGE")), tags: new[] {"environment:dev"});
     }
 
     public void BlowItUp()
     {
         var random = new Random();
+        long itemsAdded = 0;
 
         while (true)
         {
@@ -89,9 +108,16 @@ public class MemoryCacheManager
                     .RuleFor(c => c.Bio4, f => f.Lorem.Paragraph(10000))
                     .RuleFor(c => c.Address, f => address.Generate());
 
-            this.Add(random.Next().ToString(), customer.Generate());
+            this.Add((random.Next() % 3000).ToString(), customer.Generate(), TimeSpan.FromMinutes(20));
+            itemsAdded++;
             var stats = GetStats();
-            Console.WriteLine($"Count: {stats.CacheCount:00000} -- Memory(MB): {stats.MemoryInMegabytes:0000.00}");
+
+            this.DogStatsdClient.Client.Gauge("memory_cache_synthetic_test.memory_cache.count.gauge", stats.CacheCount, tags: new[] {"environment:dev"});
+            this.DogStatsdClient.Client.Gauge("memory_cache_synthetic_test.memory_cache.items_added.gauge", itemsAdded, tags: new[] {"environment:dev"});
+            this.DogStatsdClient.Client.Gauge("memory_cache_synthetic_test.memory_cache.size_mb.gauge", stats.MemoryInMegabytes, tags: new[] {"environment:dev"});
+
+            Log.Information($"Items Added: {itemsAdded} -- Cache Count: {stats.CacheCount:00000} -- Memory(MB): {stats.MemoryInMegabytes:0000.00}", stats.CacheCount, stats.MemoryInMegabytes);
+            // Log.Information($"Datadog metrics actually sent: {this.DogStatsdClient.Client.TelemetryCounters.MetricsSent}");
         }
 
         // ReSharper disable once FunctionNeverReturns
@@ -182,6 +208,8 @@ public class MemoryCacheManager
 
     public void Add(string key, object value, TimeSpan? validFor = null)
     {
+        using var scope = Tracer.Instance.StartActive("add-cache-object");
+
         if (value == null)
         {
             value = NullValue;
@@ -219,7 +247,7 @@ public class MemoryCacheManager
 
         var stack = new StackTrace(1);
         var caller = stack.GetFrame(0).GetMethod();
-        Console.WriteLine($"Application memory cache has been cleared via {caller.DeclaringType}.{caller.Name}. Stack:{stack}");
+        Log.Information($"Application memory cache has been cleared via {caller.DeclaringType}.{caller.Name}. Stack:{stack}");
     }
 
     public IEnumerable<KeyValuePair<string, object>> AsEnumerable()

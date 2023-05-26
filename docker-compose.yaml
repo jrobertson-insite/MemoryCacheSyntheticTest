@@ -1,0 +1,16 @@
+version: "3.7"
+services:
+  memory-cache-synthetic-test:
+    build:
+      context: ./
+    image: registry.cloud.insitehq.net/memorycachesynthetictest
+    environment:
+      DD_AGENT_HOST: 192.168.0.119
+      DD_ENV: b2bcommerce-internal
+      DD_SERVICE: memory-cache-synthetic-test
+      DD_VERSION: latest
+      DD_RUNTIME_METRICS_ENABLED: "true"
+      COR_ENABLE_PROFILING: 1
+      COR_PROFILER: "{846F5F1C-F9AE-4B07-969E-05C26BC060D8}"
+    ports:
+    - "8080:80"
