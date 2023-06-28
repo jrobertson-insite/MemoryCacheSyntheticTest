@@ -16,9 +16,9 @@ FROM registry.cloud.insitehq.net/memorycachesynthetictest
 COPY bin/MemoryCacheSyntheticTest.dll bin/MemoryCacheSyntheticTest.dll
 COPY Web.config UpdateNamedCacheSettings.ps1 ./
 
-# Datadog AppKey: 42f6d1d9a2b5ec11ccf45e1065b72aeba364dfff
-# Datadog KeyId: 870d4c7e-a1e1-4357-b4e3-cb096bd83d03
-# Datadog Key: 0ef7c72f249589ca240c911f510dfa58
+ENV DatadogAppKey=000
+ENV DatadogKeyId=000
+ENV DatadogKey=000
 
 # docker run -d --cgroupns host \
 #               --pid host \
